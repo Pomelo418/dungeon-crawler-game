@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dungeon Crawler</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #060610;
+  color: #c0c0d4;
+  font-family: 'Courier New', monospace;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 16px;
+  gap: 12px;
+}
+
+h1 {
+  font-size: 1.3em;
+  color: #7ac7ff;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px #3399ff66;
+}
+
+#game-container {
+  display: flex;
+  gap: 0;
+  border: 1px solid #252540;
+  box-shadow: 0 0 50px #00000099, 0 0 2px #3030608a;
+}
+
+#canvas-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+#msg-log {
+  background: #08081a;
+  border-top: 1px solid #1e1e38;
+  padding: 6px 10px;
+  height: 96px;
+  overflow-y: auto;
+  font-size: 0.75em;
+  line-height: 1.65;
+}
+
+#msg-log p         { color: #6a6a90; }
+#msg-log p.combat  { color: #e05555; }
+#msg-log p.item    { color: #e0c040; }
+#msg-log p.system  { color: #6699cc; }
+#msg-log p.good    { color: #55cc77; }
+#msg-log p.warn    { color: #cc8844; }
+
+#sidebar {
+  background: #08081a;
+  border-left: 1px solid #1e1e38;
+  width: 210px;
+  padding: 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sblock {
+  border-bottom: 1px solid #15152a;
+  padding-bottom: 10px;
+}
+
+.slabel {
+  font-size: 0.65em;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #404066;
+  margin-bottom: 3px;
+}
+
+.sval {
+  font-size: 0.95em;
+  color: #d0d0e8;
+}
+
+.bar-bg {
+  background: #111128;
+  border-radius: 2px;
+  height: 8px;
+  margin-top: 4px;
+  overflow: hidden;
+  border: 1px solid #1e1e3a;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.15s ease;
+}
+
+#hp-fill  { background: linear-gradient(90deg, #aa1111, #ee3333); }
+#xp-fill  { background: linear-gradient(90deg, #004499, #0077dd); }
+
+#key-display {
+  font-size: 1.3em;
+  letter-spacing: 4px;
+  color: #e8c020;
+  text-shadow: 0 0 8px #aa8800aa;
+  min-height: 1.4em;
+}
+
+.controls {
+  font-size: 0.68em;
+  color: #30304a;
+  line-height: 1.85;
+}
+
+.controls b { color: #55558a; font-weight: normal; }
+
+#btn-area {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+button {
+  width: 100%;
+  padding: 7px 10px;
+  background: #111128;
+  border: 1px solid #2a2a50;
+  color: #7070a0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.78em;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  transition: all 0.12s;
+  text-transform: uppercase;
+}
+
+button:hover {
+  background: #1e1e40;
+  color: #aaaacc;
+  border-color: #5050a0;
+}
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+#overlay-box {
+  background: #0a0a1e;
+  border: 1px solid #3030aa;
+  box-shadow: 0 0 50px #0000cc44, inset 0 0 30px #00000055;
+  padding: 36px 44px;
+  text-align: center;
+  min-width: 300px;
+}
+
+#overlay-box h2 {
+  font-size: 1.8em;
+  letter-spacing: 0.18em;
+  margin-bottom: 12px;
+}
+
+#overlay-box.death h2 { color: #ff2222; text-shadow: 0 0 14px #cc000099; }
+#overlay-box.win   h2 { color: #00ff88; text-shadow: 0 0 14px #00cc6699; }
+#overlay-box.next  h2 { color: #7ac7ff; text-shadow: 0 0 14px #3399ff99; }
+
+#overlay-box p {
+  color: #5a5a88;
+  font-size: 0.85em;
+  margin-bottom: 6px;
+  line-height: 1.6;
+}
+
+#overlay-box .sub { font-size: 0.75em; color: #383856; margin-bottom: 20px; }
+
+#overlay-box button {
+  width: auto;
+  padding: 9px 28px;
+  margin: 4px;
+  font-size: 0.82em;
+}
+</style>
+</head>
+<body>
+<h1>⚔ Dungeon Crawler</h1>
+
+<div id="game-container">
+  <div id="canvas-wrap">
+    <canvas id="game"></canvas>
+    <div id="msg-log"></div>
+  </div>
+
+  <div id="sidebar">
+    <div class="sblock">
+      <div class="slabel">Dungeon Level</div>
+      <div class="sval" id="s-level">1</div>
+    </div>
+    <div class="sblock">
+      <div class="slabel">Health</div>
+      <div class="sval" id="s-hp">100 / 100</div>
+      <div class="bar-bg"><div class="bar-fill" id="hp-fill" style="width:100%"></div></div>
+    </div>
+    <div class="sblock">
+      <div class="slabel">Experience</div>
+      <div class="sval" id="s-xp">0 / 40</div>
+      <div class="bar-bg"><div class="bar-fill" id="xp-fill" style="width:0%"></div></div>
+    </div>
+    <div class="sblock">
+      <div class="slabel">Keys Collected</div>
+      <div id="key-display">☐☐☐</div>
+    </div>
+    <div class="sblock">
+      <div class="slabel">Enemies / Turn</div>
+      <div class="sval"><span id="s-enemies">0</span> &nbsp;·&nbsp; Turn <span id="s-turn">0</span></div>
+    </div>
+    <div class="controls sblock">
+      <b>WASD / Arrows</b> — move<br>
+      <b>Space / .</b> — wait a turn<br>
+      <b>Walk into</b> enemy to attack<br>
+      <b>Step on ★</b> to collect key<br>
+      <b>Reach ▶</b> with all keys to exit
+    </div>
+    <div id="btn-area">
+      <button onclick="newGame()">New Game (N)</button>
+    </div>
+  </div>
+</div>
+
+<div id="overlay" style="display:none">
+  <div id="overlay-box" class="">
+    <h2 id="ov-title"></h2>
+    <p id="ov-msg"></p>
+    <p class="sub" id="ov-sub"></p>
+    <button id="ov-btn1" onclick="overlayAct(0)"></button>
+    <button id="ov-btn2" onclick="overlayAct(1)" style="display:none"></button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────
+const COLS      = 41;   // must be odd
+const ROWS      = 27;   // must be odd
+const T         = 18;   // tile size in px
+const VISION_R  = 7;    // tile vision radius
+const CHASE_R   = 12;   // max BFS distance for enemy chase
+const TOTAL_KEYS = 3;
+
+const PAL = {
+  bg:         '#06060f',
+  wall:       '#10101e',
+  wallEdge:   '#1a1a30',
+  floorDim:   '#141424',
+  floorLit:   '#1e1e38',
+  floorAlt:   '#222240',
+  player:     '#33ccff',
+  playerGlow: '#0088ff',
+  key:        '#ffcc00',
+  keyDim:     '#665500',
+  exitOff:    '#2a2a2a',
+  exitOn:     '#00ff88',
+  exitOnGlow: '#00cc66',
+  goblin:     '#44ee44',
+  orc:        '#ff8833',
+  skeleton:   '#bbbbbb',
+  zombie:     '#cc5588',
+};
+
+const ENEMY_TYPES = {
+  goblin:   { name:'Goblin',   maxHp:15, atk:[3,7],  col:PAL.goblin,   glyph:'g', xp:10, slow:false },
+  skeleton: { name:'Skeleton', maxHp:22, atk:[5,9],  col:PAL.skeleton, glyph:'s', xp:18, slow:false },
+  orc:      { name:'Orc',      maxHp:38, atk:[9,14], col:PAL.orc,      glyph:'O', xp:30, slow:true  },
+  zombie:   { name:'Zombie',   maxHp:30, atk:[6,10], col:PAL.zombie,   glyph:'z', xp:22, slow:true  },
+};
+
+// ─────────────────────────────────────────
+// CANVAS SETUP
+// ─────────────────────────────────────────
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+canvas.width  = COLS * T;
+canvas.height = ROWS * T;
+document.getElementById('msg-log').style.width = canvas.width + 'px';
+
+// ─────────────────────────────────────────
+// GAME STATE
+// ─────────────────────────────────────────
+let G = {};
+let overlayActions = [];
+
+// ─────────────────────────────────────────
+// UTILITY
+// ─────────────────────────────────────────
+const rnd   = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const mdist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+const edist = (a, b) => { const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; };
+const key   = (x, y) => `${x},${y}`;
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = rnd(0, i);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ─────────────────────────────────────────
+// MAZE GENERATION — recursive backtracker
+// ─────────────────────────────────────────
+function buildMaze() {
+  // 0 = wall, 1 = floor
+  const map = Array.from({length: ROWS}, () => new Uint8Array(COLS));
+
+  function carve(cx, cy) {
+    map[cy][cx] = 1;
+    for (const [dx, dy] of shuffle([[0,-2],[0,2],[-2,0],[2,0]])) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx > 0 && nx < COLS-1 && ny > 0 && ny < ROWS-1 && map[ny][nx] === 0) {
+        map[cy + dy/2][cx + dx/2] = 1;
+        carve(nx, ny);
+      }
+    }
+  }
+
+  carve(1, 1);
+
+  // Punch a few extra holes to create shortcuts / loops
+  for (let i = 0; i < 20; i++) {
+    const x = rnd(1, COLS-2), y = rnd(1, ROWS-2);
+    if (map[y][x] === 0) {
+      const hFloor = x>1 && map[y][x-1]===1 && x<COLS-2 && map[y][x+1]===1;
+      const vFloor = y>1 && map[y-1][x]===1 && y<ROWS-2 && map[y+1][x]===1;
+      if (hFloor || vFloor) map[y][x] = 1;
+    }
+  }
+
+  return map;
+}
+
+function floorList(map) {
+  const cells = [];
+  for (let y=1; y<ROWS-1; y++)
+    for (let x=1; x<COLS-1; x++)
+      if (map[y][x] === 1) cells.push({x, y});
+  return cells;
+}
+
+function pickFar(floors, from, minD = 16) {
+  const far = floors.filter(c => mdist(c, from) >= minD);
+  const pool = far.length ? far : floors;
+  return pool[rnd(0, pool.length-1)];
+}
+
+// ─────────────────────────────────────────
+// VISIBILITY / FOV
+// ─────────────────────────────────────────
+function bresenham(x0, y0, x1, y1) {
+  // Yields cells along line; returns false if wall blocks before endpoint
+  let dx = Math.abs(x1-x0), dy = Math.abs(y1-y0);
+  let sx = x0<x1?1:-1, sy = y0<y1?1:-1;
+  let err = dx-dy, cx=x0, cy=y0;
+  while (true) {
+    if (cx===x1 && cy===y1) return true;
+    if (G.map[cy][cx]===0 && !(cx===x0&&cy===y0)) return false;
+    const e2 = 2*err;
+    if (e2 > -dy) { err-=dy; cx+=sx; }
+    if (e2 <  dx) { err+=dx; cy+=sy; }
+  }
+}
+
+function computeVis() {
+  const {player, map, vis} = G;
+  // clear current vis
+  for (let y=0; y<ROWS; y++) vis[y].fill(false);
+  const r = VISION_R, r2 = r*r;
+  for (let dy=-r; dy<=r; dy++) {
+    for (let dx=-r; dx<=r; dx++) {
+      if (dx*dx+dy*dy > r2) continue;
+      const tx=player.x+dx, ty=player.y+dy;
+      if (tx<0||tx>=COLS||ty<0||ty>=ROWS) continue;
+      if (bresenham(player.x, player.y, tx, ty)) {
+        vis[ty][tx] = true;
+        G.explored[ty][tx] = true;
+      }
+    }
+  }
+}
+
+function canSee(x, y) { return G.vis[y]?.[x] === true; }
+
+// ─────────────────────────────────────────
+// BFS PATHFINDING
+// ─────────────────────────────────────────
+function bfsStep(from, to) {
+  if (mdist(from, to) > CHASE_R) return null;
+  const q = [{x:from.x, y:from.y, d:0}];
+  const vis = new Set([key(from.x,from.y)]);
+  const par = new Map();
+
+  while (q.length) {
+    const cur = q.shift();
+    if (cur.x===to.x && cur.y===to.y) {
+      // Trace back to first step
+      let node = key(cur.x,cur.y), prev = null;
+      while (par.has(node)) { prev=node; node=par.get(node); }
+      if (!prev) return null;
+      const [px,py] = prev.split(',').map(Number);
+      return {x:px, y:py};
+    }
+    if (cur.d >= CHASE_R) continue;
+    for (const [dx,dy] of [[0,-1],[0,1],[-1,0],[1,0]]) {
+      const nx=cur.x+dx, ny=cur.y+dy;
+      if (nx<0||nx>=COLS||ny<0||ny>=ROWS||G.map[ny][nx]===0) continue;
+      const nk=key(nx,ny);
+      if (!vis.has(nk)) {
+        vis.add(nk);
+        par.set(nk, key(cur.x,cur.y));
+        q.push({x:nx,y:ny,d:cur.d+1});
+      }
+    }
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────
+// COMBAT
+// ─────────────────────────────────────────
+function rollDmg(range, def=0) { return Math.max(1, rnd(range[0],range[1]) - def); }
+
+function playerAttack(enemy) {
+  const dmg = rollDmg(G.player.atk, 0);
+  enemy.hp -= dmg;
+  if (enemy.hp <= 0) {
+    G.enemies = G.enemies.filter(e => e.id !== enemy.id);
+    G.player.xp += enemy.xp;
+    msg(`${enemy.name} is slain! +${enemy.xp} XP`, 'good');
+    checkLevelUp();
+  } else {
+    msg(`You strike ${enemy.name} for ${dmg} dmg. (${enemy.hp}/${enemy.maxHp} HP)`, 'combat');
+  }
+}
+
+function enemyAttack(e) {
+  const dmg = rollDmg(e.atk, G.player.def);
+  G.player.hp = Math.max(0, G.player.hp - dmg);
+  msg(`${e.name} hits you for ${dmg}! (${G.player.hp}/${G.player.maxHp} HP)`, 'combat');
+  if (G.player.hp === 0) {
+    G.dead = true;
+    setTimeout(() => showOverlay('death', 'YOU DIED',
+      `Fell on level ${G.level}.`,
+      `Score: ${G.player.xp} XP`,
+      [{label:'New Game', fn:()=>newGame()}]
+    ), 300);
+  }
+}
+
+function checkLevelUp() {
+  if (G.player.xp >= G.player.xpNeeded) {
+    G.player.xp -= G.player.xpNeeded;
+    G.player.xpNeeded = Math.floor(G.player.xpNeeded * 1.5);
+    G.player.maxHp += 15;
+    G.player.hp = Math.min(G.player.hp + 25, G.player.maxHp);
+    G.player.atk[0]++; G.player.atk[1] += 2;
+    G.player.lvl++;
+    msg(`You feel stronger! (Player Lv.${G.player.lvl})`, 'system');
+  }
+}
+
+// ─────────────────────────────────────────
+// PLAYER ACTIONS
+// ─────────────────────────────────────────
+function tryMove(dx, dy) {
+  if (G.dead || G.won) return;
+  const nx = G.player.x + dx, ny = G.player.y + dy;
+  if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return;
+  if (G.map[ny][nx] === 0) return;
+
+  // Attack enemy at target?
+  const target = G.enemies.find(e => e.x===nx && e.y===ny);
+  if (target) {
+    playerAttack(target);
+    if (!G.dead) endTurn();
+    return;
+  }
+
+  G.player.x = nx;
+  G.player.y = ny;
+
+  // Collect key?
+  const ki = G.keys.findIndex(k => k.x===nx && k.y===ny);
+  if (ki !== -1) {
+    G.keys.splice(ki, 1);
+    G.keysHeld++;
+    const need = TOTAL_KEYS - G.keysHeld;
+    msg(need > 0 ? `Key collected! ${need} more needed.` : 'All keys! The exit is open!', 'item');
+  }
+
+  // At exit?
+  if (nx === G.exit.x && ny === G.exit.y) {
+    if (G.keysHeld >= TOTAL_KEYS) {
+      G.won = true;
+      const nl = G.level + 1;
+      setTimeout(() => showOverlay('next', `LEVEL ${G.level} CLEAR`,
+        `You descended deeper into the dungeon.`,
+        `Score so far: ${G.player.xp} XP`,
+        [
+          {label:'Descend (Lv.'+ nl +')', fn:()=>newGame(nl, Math.min(G.player.hp+30, G.player.maxHp), G.player.xp, G.player.maxHp, G.player.xpNeeded, G.player.lvl)},
+          {label:'New Game', fn:()=>newGame()},
+        ]
+      ), 200);
+      return;
+    } else {
+      msg(`Exit locked! Collect ${TOTAL_KEYS - G.keysHeld} more key(s).`, 'warn');
+    }
+  }
+
+  if (!G.dead) endTurn();
+}
+
+function waitTurn() {
+  if (G.dead || G.won) return;
+  msg('You wait...', '');
+  endTurn();
+}
+
+// ─────────────────────────────────────────
+// ENEMY AI
+// ─────────────────────────────────────────
+function enemyTurn() {
+  for (const e of G.enemies) {
+    if (G.dead) break;
+    if (e.slow) { e.st = (e.st||0)+1; if (e.st%2===0) continue; }
+
+    if (mdist(e, G.player) === 1) {
+      enemyAttack(e);
+      continue;
+    }
+
+    if (canSee(e.x,e.y) || mdist(e,G.player) <= CHASE_R) {
+      const next = bfsStep(e, G.player);
+      if (next) {
+        const occ = G.enemies.some(o=>o.id!==e.id&&o.x===next.x&&o.y===next.y);
+        if (!occ && !(next.x===G.player.x&&next.y===G.player.y)) {
+          e.x=next.x; e.y=next.y;
+          continue;
+        }
+      }
+    }
+
+    // Wander randomly
+    if (Math.random() < 0.35) {
+      for (const [dx,dy] of shuffle([[0,-1],[0,1],[-1,0],[1,0]])) {
+        const nx=e.x+dx, ny=e.y+dy;
+        if (G.map[ny]?.[nx]!==1) continue;
+        if (G.enemies.some(o=>o.id!==e.id&&o.x===nx&&o.y===ny)) continue;
+        if (nx===G.player.x&&ny===G.player.y) continue;
+        e.x=nx; e.y=ny; break;
+      }
+    }
+  }
+}
+
+function endTurn() {
+  G.turn++;
+  enemyTurn();
+  computeVis();
+  render();
+  updateUI();
+}
+
+// ─────────────────────────────────────────
+// RENDERING
+// ─────────────────────────────────────────
+function render() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = PAL.bg;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Tiles
+  for (let y=0; y<ROWS; y++) {
+    for (let x=0; x<COLS; x++) {
+      const vis  = G.vis[y][x];
+      const seen = G.explored[y][x];
+      if (!vis && !seen) continue;
+
+      const px=x*T, py=y*T;
+      const isWall = G.map[y][x]===0;
+
+      if (isWall) {
+        ctx.fillStyle = vis ? PAL.wallEdge : PAL.wall;
+        ctx.fillRect(px,py,T,T);
+        if (vis) {
+          ctx.fillStyle = PAL.wall;
+          ctx.fillRect(px+1,py+1,T-2,T-2);
+        }
+      } else {
+        const col = vis ? (((x+y)&1) ? PAL.floorLit : PAL.floorAlt) : PAL.floorDim;
+        ctx.fillStyle = col;
+        ctx.fillRect(px,py,T,T);
+      }
+    }
+  }
+
+  // Exit
+  const ex = G.exit;
+  if (G.vis[ex.y][ex.x] || G.explored[ex.y][ex.x]) {
+    const vis = G.vis[ex.y][ex.x];
+    const open = G.keysHeld >= TOTAL_KEYS;
+    ctx.save();
+    if (vis && open) { ctx.shadowColor=PAL.exitOnGlow; ctx.shadowBlur=16; }
+    ctx.fillStyle = !vis ? '#252525' : open ? PAL.exitOn : PAL.exitOff;
+    ctx.font = `bold ${T+2}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('▶', ex.x*T+T/2, ex.y*T+T/2+1);
+    ctx.restore();
+  }
+
+  // Keys
+  for (const k of G.keys) {
+    const vis  = G.vis[k.y][k.x];
+    const seen = G.explored[k.y][k.x];
+    if (!vis && !seen) continue;
+    ctx.save();
+    if (vis) { ctx.shadowColor=PAL.key; ctx.shadowBlur=10; }
+    ctx.fillStyle = vis ? PAL.key : PAL.keyDim;
+    ctx.font = `${T-2}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★', k.x*T+T/2, k.y*T+T/2+1);
+    ctx.restore();
+  }
+
+  // Enemies
+  for (const e of G.enemies) {
+    if (!G.vis[e.y][e.x]) continue;
+    const px=e.x*T, py=e.y*T;
+
+    // Body
+    ctx.fillStyle = e.col + '22';
+    ctx.fillRect(px+1,py+4,T-2,T-5);
+    ctx.strokeStyle = e.col;
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(px+2,py+5,T-4,T-7);
+
+    // Glyph
+    ctx.fillStyle = e.col;
+    ctx.font = `bold ${T-5}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(e.glyph, px+T/2, py+T/2+2);
+
+    // HP bar
+    const bw=T-4, bh=3, bx=px+2, by=py+1;
+    ctx.fillStyle = '#220000';
+    ctx.fillRect(bx,by,bw,bh);
+    const ratio = e.hp/e.maxHp;
+    ctx.fillStyle = ratio>0.6 ? '#33bb33' : ratio>0.3 ? '#ccaa00' : '#cc2222';
+    ctx.fillRect(bx,by,bw*ratio,bh);
+  }
+
+  // Player
+  {
+    const px=G.player.x*T, py=G.player.y*T;
+    ctx.save();
+    ctx.shadowColor = PAL.playerGlow;
+    ctx.shadowBlur = 18;
+    // Halo
+    ctx.beginPath();
+    ctx.arc(px+T/2, py+T/2, T/2-1, 0, Math.PI*2);
+    ctx.fillStyle = PAL.player + '18';
+    ctx.fill();
+    ctx.strokeStyle = PAL.player;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Glyph
+    ctx.fillStyle = PAL.player;
+    ctx.font = `bold ${T-3}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('@', px+T/2, py+T/2+1);
+    ctx.restore();
+  }
+}
+
+// ─────────────────────────────────────────
+// UI
+// ─────────────────────────────────────────
+function updateUI() {
+  const p = G.player;
+  document.getElementById('s-level').textContent = G.level;
+  document.getElementById('s-hp').textContent = `${Math.max(0,p.hp)} / ${p.maxHp}`;
+  document.getElementById('hp-fill').style.width = clamp(p.hp/p.maxHp*100,0,100) + '%';
+  document.getElementById('s-xp').textContent = `${p.xp} / ${p.xpNeeded}`;
+  document.getElementById('xp-fill').style.width = clamp(p.xp/p.xpNeeded*100,0,100) + '%';
+  document.getElementById('s-turn').textContent = G.turn;
+  document.getElementById('s-enemies').textContent = G.enemies.length;
+
+  let ks = '';
+  for (let i=0; i<TOTAL_KEYS; i++) ks += i<G.keysHeld ? '★' : '☐';
+  document.getElementById('key-display').textContent = ks;
+}
+
+// ─────────────────────────────────────────
+// MESSAGES
+// ─────────────────────────────────────────
+function msg(text, cls='') {
+  const log = document.getElementById('msg-log');
+  const p = document.createElement('p');
+  p.className = cls;
+  p.textContent = text;
+  log.appendChild(p);
+  while (log.children.length > 80) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ─────────────────────────────────────────
+// OVERLAY
+// ─────────────────────────────────────────
+function showOverlay(type, title, line1, line2, actions) {
+  overlayActions = actions;
+  const box = document.getElementById('overlay-box');
+  box.className = type;
+  document.getElementById('ov-title').textContent = title;
+  document.getElementById('ov-msg').textContent = line1;
+  document.getElementById('ov-sub').textContent = line2;
+  const b1 = document.getElementById('ov-btn1');
+  const b2 = document.getElementById('ov-btn2');
+  b1.textContent = actions[0].label;
+  if (actions[1]) {
+    b2.style.display = ''; b2.textContent = actions[1].label;
+  } else { b2.style.display = 'none'; }
+  document.getElementById('overlay').style.display = 'flex';
+}
+
+function hideOverlay() {
+  document.getElementById('overlay').style.display = 'none';
+  overlayActions = [];
+}
+
+function overlayAct(i) {
+  hideOverlay();
+  if (overlayActions[i]) overlayActions[i].fn();
+}
+
+// ─────────────────────────────────────────
+// GAME INIT
+// ─────────────────────────────────────────
+function newGame(level=1, hp=100, xp=0, maxHp=100, xpNeeded=40, plvl=1) {
+  hideOverlay();
+  document.getElementById('msg-log').innerHTML = '';
+
+  const map = buildMaze();
+  const floors = floorList(map);
+  const explored = Array.from({length:ROWS}, ()=>new Uint8Array(COLS));
+  const vis      = Array.from({length:ROWS}, ()=>new Uint8Array(COLS));
+
+  const player = {
+    x:1, y:1,
+    hp: clamp(hp, 1, maxHp),
+    maxHp,
+    xp, xpNeeded,
+    atk: [7+level, 13+level*2],
+    def: Math.floor(level/3),
+    lvl: plvl,
+  };
+
+  // Exit — far from start
+  const exit = pickFar(floors, player, 18);
+  const used = new Set([key(1,1), key(exit.x,exit.y)]);
+
+  // Keys
+  const keys = [];
+  let tries=0;
+  while (keys.length < TOTAL_KEYS && tries++ < 400) {
+    const c = floors[rnd(0,floors.length-1)];
+    const k = key(c.x,c.y);
+    if (!used.has(k)) { keys.push({x:c.x, y:c.y, id:Math.random()}); used.add(k); }
+  }
+
+  // Enemy pool scaled by level
+  const pool = ['goblin','goblin','skeleton','skeleton','orc','zombie'];
+  const enemyCount = clamp(4 + level*2, 4, 14);
+  const enemies = [];
+  tries=0;
+  while (enemies.length < enemyCount && tries++ < 600) {
+    const c = floors[rnd(0,floors.length-1)];
+    const k = key(c.x,c.y);
+    if (!used.has(k) && mdist(c,player)>7) {
+      const type = pool[rnd(0,Math.min(pool.length-1, 1+level))];
+      const d = ENEMY_TYPES[type];
+      enemies.push({
+        ...d,
+        hp: Math.round(d.maxHp * (1 + (level-1)*0.2)),
+        maxHp: Math.round(d.maxHp * (1 + (level-1)*0.2)),
+        atk: [d.atk[0]+Math.floor(level/2), d.atk[1]+level],
+        x:c.x, y:c.y, id:Math.random(), st:0
+      });
+      used.add(k);
+    }
+  }
+
+  G = { map, explored, vis, player, enemies, keys, exit,
+        keysHeld:0, turn:0, level, dead:false, won:false };
+
+  computeVis();
+  render();
+  updateUI();
+  msg(`Dungeon level ${level}. Find ${TOTAL_KEYS} keys and escape!`, 'system');
+  if (level > 1) msg(`You descend. ${enemies.length} enemies lurk in the dark.`, 'system');
+}
+
+// ─────────────────────────────────────────
+// INPUT
+// ─────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const dir = {
+    ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0],
+    w:[0,-1], s:[0,1], a:[-1,0], d:[1,0],
+    W:[0,-1], S:[0,1], A:[-1,0], D:[1,0],
+  }[e.key];
+
+  if (dir) { e.preventDefault(); tryMove(...dir); return; }
+
+  if (e.key===' ' || e.key==='.') { e.preventDefault(); waitTurn(); return; }
+  if (e.key==='n' || e.key==='N') { newGame(); }
+});
+
+// ─────────────────────────────────────────
+// START
+// ─────────────────────────────────────────
+newGame();
+</script>
+</body>
+</html>
